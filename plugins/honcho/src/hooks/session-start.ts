@@ -106,12 +106,11 @@ export async function handleSessionStart(): Promise<void> {
     // Also stores instanceId per-cwd to prevent cross-session collision
     setCachedSessionId(cwd, sessionName, session.id, claudeInstanceId);
 
-    // Step 4: Set session peer configuration (fire-and-forget)
-    // New SDK uses session.setPeerConfiguration()
-    Promise.all([
-      session.setPeerConfiguration(userPeer, { observeMe: true, observeOthers: false }),
-      session.setPeerConfiguration(aiPeer, { observeMe: false, observeOthers: true }),
-    ]).catch((e) => logHook("session-start", `Set peers failed: ${e}`));
+    // Step 4: Add peers with observation config (materializes session server-side)
+    await session.addPeers([
+      [userPeer, { observeMe: true, observeOthers: false }],
+      [aiPeer, { observeMe: true, observeOthers: true }],
+    ]);
 
     // Only persist session names for per-directory strategy (stable names).
     // Dynamic strategies (git-branch, chat-instance) change per session,
