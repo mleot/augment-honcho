@@ -3,7 +3,7 @@
 [![Honcho Banner](./assets/honcho_clawd.png)](https://honcho.dev)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.2.3-blue)](https://github.com/plastic-labs/claude-honcho)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue)](https://github.com/plastic-labs/claude-honcho)
 [![Honcho](https://img.shields.io/badge/Honcho-Memory%20API-blue)](https://honcho.dev)
 
 A plugin marketplace for Claude Code, powered by [Honcho](https://honcho.dev) from Plastic Labs.
@@ -232,6 +232,9 @@ All configuration lives in a single global file at `~/.honcho/config.json`. You 
     "skipDialectic": false            // Skip dialectic chat() calls in user-prompt hook
   },
 
+  // Observation mode
+  "observationMode": "unified",       // "unified" (default) | "directional"
+
   // Endpoint
   "endpoint": {
     "environment": "production"       // "production" | "local"
@@ -257,6 +260,92 @@ Session strategy controls how Honcho maps your conversations to sessions. Change
 | `per-directory` (default) | One session per project directory. Stable across restarts. | Most users — each project accumulates its own memory |
 | `git-branch` | Session name includes the current git branch. Switching branches switches sessions. | Feature-branch workflows where context per branch matters |
 | `chat-instance` | Each Claude Code chat gets its own session. No continuity between restarts. | Ephemeral usage, experimentation, or when you want a clean slate each time |
+
+### Observation Mode
+
+Controls how Honcho stores and retrieves conclusions about you. Change it via `set_config` or edit `config.json` directly. Requires a Claude Code restart.
+
+| Mode | Behavior | Best for |
+| --- | --- | --- |
+| `unified` (default) | All agents write to your self-observation collection (`observer=you, observed=you`). Conclusions are portable — switch between Claude, Hermes, or any agent without losing memory. | Most users, when you want to build a unified context hub, agent-switching |
+| `directional` | Each AI peer keeps its own separate view of you (`observer=aiPeer, observed=you`). Claude's observations stay with Claude, Hermes' with Hermes. | Multi-peer workspaces where you want isolated per-peer(agent) representations |
+
+> **Peer defaults:** The plugin does not explicitly set `observeMe` or `observeOthers` on peers — it uses the server-side defaults. If you want to change how a peer observes (e.g., disable self-observation), update the peer's defaults via API or on [app.honcho.dev](https://app.honcho.dev). The only override the plugin applies is `observeOthers: true` on the AI peer in `directional` mode.
+
+To change:
+
+- Ask Claude: *"Set my observation mode to directional"*
+- Or edit `~/.honcho/config.json`:
+  ```json
+  { "observationMode": "directional" }
+  ```
+- Or per-host:
+  ```json
+  {
+    "hosts": {
+      "claude_code": { "observationMode": "directional" }
+    }
+  }
+  ```
+
+> **Note:** Switching modes doesn't automatically migrate existing conclusions. Each mode reads from a different collection. See [Migrating Observations](#migrating-observations) below to move conclusions between collections.
+
+### Migrating Observations
+
+When switching observation modes, conclusions stored under the old mode's collection won't be visible to the new mode. Use the migration script to copy them over:
+
+```bash
+# Requires: pip install honcho-ai
+# Set your API key: export HONCHO_API_KEY="hch-..."
+
+# Dry run — see what would be migrated (directional → unified)
+python scripts/migrate-observations.py \
+  --workspace agents \
+  --from-observer claude \
+  --user ajspig \
+  --dry-run
+
+# Execute the migration
+python scripts/migrate-observations.py \
+  --workspace agents \
+  --from-observer claude \
+  --user ajspig
+
+# Execute and delete the source conclusions after migration
+python scripts/migrate-observations.py \
+  --workspace agents \
+  --from-observer claude \
+  --user ajspig \
+  --delete-source
+```
+
+The script:
+- Reads all conclusions from the source collection (e.g., `observer=claude, observed=ajspig`)
+- Deduplicates by content against the destination (e.g., `observer=ajspig, observed=ajspig`)
+- Creates only the conclusions that don't already exist in the destination
+- Handles rate limiting with automatic retries
+
+To migrate in the other direction (unified → directional):
+
+```bash
+python scripts/migrate-observations.py \
+  --workspace agents \
+  --from-observer ajspig \
+  --to-observer claude \
+  --user ajspig
+```
+
+If you use multiple AI agents, run the script once per agent:
+
+```bash
+# Migrate Claude's observations to unified
+python scripts/migrate-observations.py -w agents --from-observer claude --user ajspig
+
+# Migrate Hermes' observations to unified
+python scripts/migrate-observations.py -w agents --from-observer hermes --user ajspig
+```
+
+Run with `--help` for all options.
 
 Session names are prefixed with your `peerName` by default (e.g., `alice-my-project`). Set `sessionPeerPrefix: false` if you're the only user and want shorter names.
 

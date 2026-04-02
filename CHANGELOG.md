@@ -2,6 +2,41 @@
 
 All notable changes to claude-honcho will be documented in this file.
 
+## [0.2.4] - 2026-04-01
+
+### Added
+
+- `observationMode: "unified" | "directional"` config flag — per-host with root fallback, default `"unified"`
+  - **unified** (default): all agents contribute to the user's self-observation collection (`observer=user, observed=user`); conclusions are portable across agents
+  - **directional** (opt-in): each AI maintains its own view of the user (`observer=aiPeer, observed=user`); useful for isolated multi-agent workspaces
+  - Resolves the ambiguity from issue #22 — prior code was implicitly directional with no user control; peer-call routing in all hooks and MCP tools now branches on this flag
+- `get_context` MCP tool — retrieves the full context object (representation + peer card), scoped by observation mode
+- `get_representation` MCP tool — lightweight representation string fetch, scoped by observation mode
+- `list_conclusions` MCP tool — paginated list of saved conclusions with `id`, `content`, and `createdAt`
+- `delete_conclusion` MCP tool — remove a conclusion by ID
+- `schedule_dream` MCP tool — trigger background memory consolidation; Honcho merges redundant conclusions and derives higher-level insights
+- `search` tool `scope` parameter — `"session"` (default) or `"workspace"` to search across all sessions
+- `observationMode` settable via `set_config` and visible in `get_config` output and status card
+
+### Fixed
+
+- `aiPeer` peer config: `observeMe` corrected to `false` — agent peers don't need self-representation; eliminates wasted background reasoning compute
+- `addPeers` session config: `aiPeer.observeOthers` is now `false` in unified mode and `true` in directional mode (was unconditionally `true`)
+
+### Changed
+
+- Bump `@honcho-ai/sdk` floor to `^2.1.0` (adds pagination, `getMessage`, `createdAt`/`isActive` on peers/sessions, strict validation)
+- Bump `@modelcontextprotocol/sdk` floor to `^1.26.0`
+
+## [0.2.3] - 2026-03-25
+
+### Fixed
+
+- Adding peers to session with config
+- Windows compatibility for TTY, setup, and install
+- Per-host config ownership, `saveRootField`, SDK client options
+- Resilient hook lifecycle: phased session-end, cache-first user-prompt
+
 ## [0.2.2] - 2026-03-03
 
 ### Fixed

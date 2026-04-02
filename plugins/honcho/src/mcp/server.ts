@@ -23,6 +23,8 @@ import {
   type SessionStrategy,
   type ReasoningLevel,
   type HonchoEnvironment,
+  type ObservationMode,
+  getObservationMode,
 } from "../config.js";
 import { honchoSessionUrl } from "../styles.js";
 import {
@@ -54,7 +56,7 @@ const DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint
 // Fields that affect session identity/routing — stale sessions risk cross-contamination
 const SESSION_AFFECTING_FIELDS = new Set([
   "workspace", "aiPeer", "peerName", "sessionStrategy", "sessionPeerPrefix",
-  "endpoint.environment", "endpoint.baseUrl", "globalOverride",
+  "endpoint.environment", "endpoint.baseUrl", "globalOverride", "observationMode",
 ]);
 
 // ============================================
@@ -109,6 +111,7 @@ function handleGetConfig(cwd: string) {
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
     reasoningLevel: cfg.reasoningLevel ?? "medium",
+    observationMode: cfg.observationMode ?? "unified",
     localContext: cfg.localContext ?? {},
     enabled: cfg.enabled !== false,
     logging: cfg.logging !== false,
@@ -201,6 +204,7 @@ function handleGetConfig(cwd: string) {
     ["peer", `${cfg.peerName} / ${cfg.aiPeer}`],
     ["host", hostLabel],
     ["messages", cfg.saveMessages !== false ? "saving enabled" : "saving disabled"],
+    ["obs mode", cfg.observationMode ?? "unified"],
   ], "current honcho config") : null;
 
   return {
@@ -413,6 +417,11 @@ function handleSetConfig(args: Record<string, unknown>) {
       cfg.reasoningLevel = String(value) as ReasoningLevel;
       break;
 
+    case "observationMode":
+      previousValue = cfg.observationMode ?? "unified";
+      cfg.observationMode = String(value) as ObservationMode;
+      break;
+
     case "localContext.maxEntries":
       previousValue = cfg.localContext?.maxEntries;
       if (!cfg.localContext) cfg.localContext = {};
@@ -479,6 +488,7 @@ function handleSetConfig(args: Record<string, unknown>) {
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
     reasoningLevel: cfg.reasoningLevel ?? "medium",
+    observationMode: cfg.observationMode ?? "unified",
     localContext: cfg.localContext ?? {},
     enabled: cfg.enabled !== false,
     logging: cfg.logging !== false,
@@ -524,7 +534,7 @@ export async function runMcpServer(): Promise<void> {
   const server = new Server(
     {
       name: "honcho",
-      version: "0.1.3",
+      version: "0.2.4",
     },
     {
       capabilities: {
@@ -542,7 +552,7 @@ export async function runMcpServer(): Promise<void> {
       tools: [
         {
           name: "search",
-          description: "Search across messages in the current Honcho session using semantic search",
+          description: "Search across messages using semantic search. Defaults to the current session; use scope='workspace' to search across all sessions.",
           inputSchema: {
             type: "object",
             properties: {
@@ -554,6 +564,12 @@ export async function runMcpServer(): Promise<void> {
                 type: "number",
                 description: "Max results (1-50)",
                 default: 10,
+              },
+              scope: {
+                type: "string",
+                enum: ["session", "workspace"],
+                description: "Search scope. 'session' searches only the current directory's session (default). 'workspace' searches across all sessions.",
+                default: "session",
               },
             },
             required: ["query"],
@@ -593,6 +609,61 @@ export async function runMcpServer(): Promise<void> {
           },
         },
         {
+          name: "list_conclusions",
+          description: "List conclusions Honcho has saved about the user. Use this to review what is remembered before creating duplicates, or to find IDs for deletion.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              page: {
+                type: "number",
+                description: "Page number (1-indexed)",
+                default: 1,
+              },
+              size: {
+                type: "number",
+                description: "Results per page (max 50)",
+                default: 20,
+              },
+            },
+          },
+        },
+        {
+          name: "delete_conclusion",
+          description: "Delete a conclusion from Honcho's memory by ID. Use list_conclusions to find the ID first.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "The conclusion ID to delete",
+              },
+            },
+            required: ["id"],
+          },
+        },
+        {
+          name: "get_context",
+          description: "Retrieve the full context object (representation + peer card) from Honcho for the current user. Scoped by observation mode.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              max_conclusions: {
+                type: "number",
+                description: "Max conclusions to include (default: 25)",
+                default: 25,
+              },
+            },
+          },
+        },
+        {
+          name: "get_representation",
+          description: "Retrieve the user's representation string from Honcho. Lighter-weight than get_context.",
+          inputSchema: {
+            type: "object",
+            properties: {},
+          },
+        },
+        {
           name: "get_config",
           description: "Get the current Honcho plugin configuration, cache state, and diagnostic warnings",
           inputSchema: {
@@ -629,6 +700,7 @@ export async function runMcpServer(): Promise<void> {
                   "contextRefresh.ttlSeconds",
                   "contextRefresh.skipDialectic",
                   "reasoningLevel",
+                  "observationMode",
                   "localContext.maxEntries",
                   "sessions.set",
                   "sessions.remove",
@@ -664,19 +736,73 @@ export async function runMcpServer(): Promise<void> {
       return handleSetConfig(args as Record<string, unknown>);
     }
 
+    // ── Peer-only tools (no session needed) ──
+
+    if (name === "list_conclusions" || name === "delete_conclusion") {
+      try {
+        const observationMode = getObservationMode(config);
+        // unified: (observer=user, observed=user); directional: (observer=aiPeer, observed=user)
+        const scopePeer = observationMode === "unified"
+          ? await honcho.peer(config.peerName)
+          : await honcho.peer(config.aiPeer);
+        const conclusionScope = scopePeer.conclusionsOf(config.peerName);
+
+        if (name === "list_conclusions") {
+          const page = (args?.page as number) ?? 1;
+          const size = Math.min((args?.size as number) ?? 20, 100);
+          const result = await conclusionScope.list({ page, size });
+          const items = result.items.map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            createdAt: c.createdAt,
+          }));
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({ items, total: result.total, page: result.page, pages: result.pages }, null, 2),
+            }],
+          };
+        }
+
+        // delete_conclusion
+        const id = args?.id as string;
+        await conclusionScope.delete(id);
+        return {
+          content: [{ type: "text", text: `Deleted conclusion ${id}` }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
     // ── Honcho session tools ──
 
     const sessionName = getSessionName(cwd);
 
     try {
       const session = await honcho.session(sessionName);
+      const observationMode = getObservationMode(config);
+
+      // unified: user observes self — all ops go through userPeer.
+      // directional: aiPeer observes user — ops use aiPeer with target.
+      const userPeer = await honcho.peer(config.peerName);
+      const aiPeer = observationMode === "directional" ? await honcho.peer(config.aiPeer) : null;
+      const activePeer = observationMode === "unified" ? userPeer : aiPeer!;
+      const chatTarget = observationMode === "unified" ? undefined : config.peerName;
+      const contextTarget = observationMode === "unified" ? undefined : config.peerName;
 
       switch (name) {
         case "search": {
           const query = args?.query as string;
           const limit = (args?.limit as number) ?? 10;
+          const scope = (args?.scope as string) ?? "session";
 
-          const messages = await session.search(query, { limit });
+          const messages = scope === "workspace"
+            ? await honcho.search(query, { limit })
+            : await session.search(query, { limit });
 
           const results = messages.map((msg: any) => ({
             content: msg.content,
@@ -697,9 +823,9 @@ export async function runMcpServer(): Promise<void> {
         case "chat": {
           const query = args?.query as string;
           const reasoningLevel = (args?.reasoning_level as string) ?? config.reasoningLevel ?? "medium";
-          const userPeer = await honcho.peer(config.peerName);
 
-          const response = await userPeer.chat(query, {
+          const response = await activePeer.chat(query, {
+            ...(chatTarget ? { target: chatTarget } : {}),
             session,
             reasoningLevel,
           });
@@ -716,9 +842,8 @@ export async function runMcpServer(): Promise<void> {
 
         case "create_conclusion": {
           const content = args?.content as string;
-          const userPeer = await honcho.peer(config.peerName);
 
-          const conclusions = await userPeer.conclusions.create({
+          const conclusions = await activePeer.conclusionsOf(config.peerName).create({
             content,
             sessionId: session.id,
           });
@@ -730,6 +855,30 @@ export async function runMcpServer(): Promise<void> {
                 text: `Saved conclusion: ${conclusions[0]?.content || content}`,
               },
             ],
+          };
+        }
+
+        case "get_context": {
+          const maxConclusions = (args?.max_conclusions as number) ?? 25;
+
+          const ctx = await activePeer.context({
+            ...(contextTarget ? { target: contextTarget } : {}),
+            maxConclusions,
+            includeMostFrequent: true,
+          });
+
+          return {
+            content: [{ type: "text", text: JSON.stringify(ctx, null, 2) }],
+          };
+        }
+
+        case "get_representation": {
+          const rep = await activePeer.representation(
+            contextTarget ? { target: contextTarget } : undefined
+          );
+
+          return {
+            content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }],
           };
         }
 
