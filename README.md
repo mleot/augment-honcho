@@ -205,7 +205,6 @@ All configuration lives in a single global file at `~/.honcho/config.json`. You 
     "claude_code": {
       "workspace": "claude_code",   // Workspace for Claude Code sessions
       "aiPeer": "claude",           // AI identity in this workspace
-      "linkedHosts": ["cursor"]     // Read context from these other hosts (optional)
     },
     "cursor": {
       "workspace": "cursor",
@@ -358,29 +357,6 @@ The plugin auto-detects which tool is running it (Claude Code, Cursor, etc.) and
 2. `cursor_version` in hook stdin (Cursor detected)
 3. `CURSOR_PROJECT_DIR` env var (Cursor child process)
 4. Default: `claude_code`
-
-### Linking Hosts for Cross-Tool Context
-
-If you use both Claude Code and Cursor, you can link them so context from one is readable in the other. Writes always stay in the current host's workspace — linking only adds read access.
-
-```jsonc
-{
-  "hosts": {
-    "claude_code": {
-      "workspace": "claude_code",
-      "aiPeer": "claude",
-      "linkedHosts": ["cursor"]  // Claude Code can read Cursor's context
-    },
-    "cursor": {
-      "workspace": "cursor",
-      "aiPeer": "cursor",
-      "linkedHosts": ["claude_code"]  // Cursor can read Claude Code's context
-    }
-  }
-}
-```
-
-Or use the `/honcho:config` skill and select **Workspace > Linking** to set this up interactively.
 
 ### Global Override
 

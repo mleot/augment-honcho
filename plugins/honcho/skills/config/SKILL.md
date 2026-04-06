@@ -37,7 +37,7 @@ AskUserQuestion:
     - label: "Session mapping"
       description: "How sessions are named — per directory, git branch, or per chat (currently: {resolved.sessionStrategy})"
     - label: "Workspace"
-      description: "Data space, linking, and cross-tool context (currently: {resolved.workspace})"
+      description: "Data space and session scope (currently: {resolved.workspace})"
 ```
 
 If the user selects "Other", present advanced options:
@@ -121,8 +121,6 @@ AskUserQuestion:
   options:
     - label: "Rename workspace"
       description: "Change workspace name (currently: {resolved.workspace})"
-    - label: "Link / unlink hosts"
-      description: "Share context across tools (currently: {resolved.linkedHosts || 'none'})"
 ```
 
 #### Workspace > Rename
@@ -141,59 +139,6 @@ AskUserQuestion:
 ```
 
 If confirmed, call `set_config` again WITH `confirm: true`.
-
-#### Workspace > Link / unlink hosts
-
-Linking and global mode are one concept: if any hosts are linked, global mode is on (shared workspace, sessions, peers). If all hosts are unlinked, global mode is off.
-
-Show one option per host. Each option is either "Link {host}" or "Unlink {host}" depending on current state. Do NOT use multiSelect — use single-select so only one action happens at a time.
-
-```
-AskUserQuestion:
-  question: "Link or unlink a host:"
-  header: "Link"
-  options:
-    - label: "Unlink {hostKey}"              // for each host in resolved.linkedHosts
-      description: "Currently linked (workspace: {hostWorkspace})"
-    - label: "Link {hostKey}"                // for each host NOT in resolved.linkedHosts
-      description: "workspace: {hostWorkspace}"
-    (one option per host from get_config's host.otherHosts)
-```
-
-**If the user chose "Link {host}":**
-
-Compute the new linked array: current `resolved.linkedHosts` + the new host.
-Call `set_config` with `field: "linkedHosts"` and the new array.
-
-If this is the first link (was previously empty), prompt for shared workspace:
-
-```
-AskUserQuestion:
-  question: "Shared workspace name?"
-  header: "Workspace"
-  options:
-    - label: "{currentWorkspace} (Recommended)"
-      description: "Keep the current workspace"
-    - label: "{otherHostWorkspace}"
-      description: "Use {otherHost}'s workspace"
-    (one option per unique workspace among linked hosts + current host)
-```
-
-Call `set_config` with `field: "workspace"`, `value: chosen`, `confirm: true`.
-Call `set_config` with `field: "globalOverride"`, `value: true`, `confirm: true`.
-
-If already linked to other hosts (just adding one more), skip the workspace prompt — the shared workspace is already set.
-
-**If the user chose "Unlink {host}":**
-
-Compute the new linked array: current `resolved.linkedHosts` minus that host.
-Call `set_config` with `field: "linkedHosts"` and the new array.
-
-If the new array is empty (no hosts linked), also disable global mode:
-Call `set_config` with `field: "globalOverride"`, `value: false`.
-Explain: "All hosts unlinked. Each host uses its own workspace and config."
-
-If hosts remain linked, just confirm: "Unlinked {host}. Still linked to: {remaining}."
 
 ### Dangerous fields (Host)
 

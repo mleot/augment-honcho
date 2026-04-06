@@ -17,7 +17,6 @@ import {
   getDetectedHost,
   getEndpointInfo,
   getKnownHosts,
-  getLinkedWorkspaces,
   setDetectedHost,
   type HonchoCLAUDEConfig,
   type SessionStrategy,
@@ -95,7 +94,6 @@ function handleGetConfig(cwd: string) {
   }
 
   // Resolved config
-  const linkedWorkspaces = getLinkedWorkspaces();
   const globalOverride = rawFile.globalOverride === true;
   const resolved = cfg ? {
     peerName: cfg.peerName,
@@ -105,8 +103,6 @@ function handleGetConfig(cwd: string) {
     globalOverride,
     sessionStrategy: cfg.sessionStrategy ?? "per-directory",
     sessionPeerPrefix: cfg.sessionPeerPrefix !== false,
-    linkedHosts: cfg.linkedHosts ?? [],
-    linkedWorkspaces,
     sessions: cfg.sessions ?? {},
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
@@ -192,13 +188,10 @@ function handleGetConfig(cwd: string) {
         ? `local (${endpointInfo.url})`
         : endpointInfo.url
     : "unknown";
-  const linkedLabel = resolved?.linkedHosts?.length
-    ? resolved.linkedHosts.join(", ")
-    : "none";
 
   const card = cfg ? renderCard([
     ["workspace", cfg.workspace],
-    ["linked", linkedLabel],
+
     ["session", sessionName ?? "unknown"],
     ["mapping", strategyLabels[cfg.sessionStrategy ?? "per-directory"] ?? cfg.sessionStrategy ?? "per directory"],
     ["peer", `${cfg.peerName} / ${cfg.aiPeer}`],
@@ -347,12 +340,6 @@ function handleSetConfig(args: Record<string, unknown>) {
       cfg.sessions = {};
       break;
 
-    case "linkedHosts": {
-      previousValue = cfg.linkedHosts ?? [];
-      const hosts = Array.isArray(value) ? value.map(String) : [];
-      cfg.linkedHosts = hosts.length ? hosts : undefined;
-      break;
-    }
 
     case "globalOverride":
       previousValue = cfg.globalOverride ?? false;
@@ -474,7 +461,6 @@ function handleSetConfig(args: Record<string, unknown>) {
 
   // Return updated resolved config
   const endpointInfo = getEndpointInfo(cfg);
-  const updatedLinkedWorkspaces = getLinkedWorkspaces();
   const resolved = {
     peerName: cfg.peerName,
     aiPeer: cfg.aiPeer,
@@ -482,8 +468,6 @@ function handleSetConfig(args: Record<string, unknown>) {
     endpoint: endpointInfo,
     sessionStrategy: cfg.sessionStrategy ?? "per-directory",
     sessionPeerPrefix: cfg.sessionPeerPrefix !== false,
-    linkedHosts: cfg.linkedHosts ?? [],
-    linkedWorkspaces: updatedLinkedWorkspaces,
     sessions: cfg.sessions ?? {},
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
@@ -689,7 +673,6 @@ export async function runMcpServer(): Promise<void> {
                   "endpoint.baseUrl",
                   "sessionStrategy",
                   "sessionPeerPrefix",
-                  "linkedHosts",
                   "enabled",
                   "logging",
                   "saveMessages",
