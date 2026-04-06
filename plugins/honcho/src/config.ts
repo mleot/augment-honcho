@@ -62,8 +62,7 @@ export interface HostConfig {
   workspace?: string;
   /** AI peer name for this host (e.g. "claude", "cursor") */
   aiPeer?: string;
-  /** Other host keys whose workspaces to read context from (writes stay local) */
-  linkedHosts?: string[];
+
   /** Per-host overrides for settings that may differ across tools */
   enabled?: boolean;
   logging?: boolean;
@@ -198,8 +197,7 @@ export interface HonchoCLAUDEConfig {
   workspace: string;
   /** AI peer name (resolved per-host, e.g. "claude" for claude-code) */
   aiPeer: string;
-  /** Other host keys whose workspaces to also read context from */
-  linkedHosts?: string[];
+
   /** How sessions are named: per-directory, git-branch, or chat-instance */
   sessionStrategy?: SessionStrategy;
   /** Prefix session names with peerName (default: true, disable for solo use) */
@@ -315,9 +313,6 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
     }
   }
 
-  // Resolve linked hosts
-  const linkedHosts = hostBlock?.linkedHosts ?? [];
-
   // Per-host settings: check hosts.<name>.X first, fall back to root X.
   // This lets the user set global defaults at root (via CLI) while
   // individual integrations can override per-host without touching root.
@@ -326,7 +321,6 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
     peerName,
     workspace,
     aiPeer,
-    linkedHosts: linkedHosts.length ? linkedHosts : undefined,
     sessionStrategy: hostBlock?.sessionStrategy ?? raw.sessionStrategy,
     sessionPeerPrefix: hostBlock?.sessionPeerPrefix ?? raw.sessionPeerPrefix,
     sessions: raw.sessions,
@@ -451,7 +445,6 @@ export function saveConfig(config: HonchoCLAUDEConfig): void {
   const existingHost: HostConfig = existing.hosts[host] ?? {};
 
   const hostEntry: HostConfig = {};
-  if (config.linkedHosts?.length) hostEntry.linkedHosts = config.linkedHosts;
 
   const setHostIfExplicit = <K extends keyof HostConfig>(
     key: K,
@@ -645,56 +638,7 @@ export function setPluginEnabled(enabled: boolean): void {
   saveConfig(config);
 }
 
-/**
- * Linked host workspace + endpoint resolution from raw config.
- * Endpoint falls back to root endpoint when the host block omits it.
- */
-export interface LinkedWorkspaceConfig {
-  hostKey: string;
-  workspace: string;
-  endpoint?: HonchoEndpointConfig;
-}
 
-export function getLinkedWorkspaceConfigs(): LinkedWorkspaceConfig[] {
-  const config = loadConfig();
-  if (!config?.linkedHosts?.length) return [];
-
-  const cfgPath = getConfigPath();
-  if (!existsSync(cfgPath)) return [];
-
-  let raw: HonchoFileConfig;
-  try {
-    raw = JSON.parse(readFileSync(cfgPath, "utf-8")) as HonchoFileConfig;
-  } catch {
-    return [];
-  }
-
-  const linked: LinkedWorkspaceConfig[] = [];
-  for (const hostKey of config.linkedHosts) {
-    // Normalize: try exact key, then underscore, then dash variants
-    const block = raw.hosts?.[hostKey]
-      ?? raw.hosts?.[hostKey.replace(/-/g, "_")]
-      ?? raw.hosts?.[hostKey.replace(/_/g, "-")];
-    // Use that host's configured workspace, or fall back to host key as workspace name
-    const ws = block?.workspace ?? hostKey;
-    // Don't include our own workspace
-    if (ws !== config.workspace) {
-      linked.push({
-        hostKey,
-        workspace: ws,
-        endpoint: block?.endpoint ?? raw.endpoint,
-      });
-    }
-  }
-  return linked;
-}
-
-/**
- * Get workspace names from linked hosts.
- */
-export function getLinkedWorkspaces(): string[] {
-  return getLinkedWorkspaceConfigs().map((entry) => entry.workspace);
-}
 
 /**
  * Get all known host keys from the config file's hosts block.
