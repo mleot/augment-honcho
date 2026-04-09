@@ -21,7 +21,7 @@
       "name": "honcho-dev",
       "source": "./plugins/honcho-dev",
       "description": "Skills for building AI applications with the Honcho SDK",
-      "version": "0.1.3",
+      "version": "0.2.4",
       "keywords": ["sdk", "development", "migration"],
       "strict": false
     }
