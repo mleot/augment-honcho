@@ -2,7 +2,7 @@
   "mcpServers": {
     "honcho": {
       "command": "bun",
-      "args": ["run", "${AUGMENT_PLUGIN_ROOT}/mcp-server.ts"]
+      "args": ["run", "${AUGGIE_PLUGIN_ROOT}/mcp-server.ts"]
     }
   }
 }
