@@ -11,10 +11,10 @@
   "license": "MIT",
   "keywords": ["memory", "context", "ai", "honcho", "persistence"],
   "hooks": "./hooks/hooks.json",
-  "mcpServers": {
-    "honcho": {
-      "command": "bun",
-      "args": ["run", "${CLAUDE_PLUGIN_ROOT}/mcp-server.ts"]
-    }
-  }
+  // "mcpServers": {
+  //   "honcho": {
+  //     "command": "bun",
+  //     "args": ["run", "${CLAUDE_PLUGIN_ROOT}/mcp-server.ts"]
+  //   }
+  // }
 }
