@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "honcho": {
-      "command": "bun",
-      "args": ["run", "${AUGMENT_PLUGIN_ROOT}/mcp-server.ts"],
+      "command": "bun run",
+      "args": ["${AUGMENT_PLUGIN_ROOT}/mcp-server.ts"],
       "env": {
         "PROJECT_ROOT": "${WORKSPACE_ROOT}"
       }
